@@ -1,0 +1,43 @@
+## @file
+#  TODO: Brief Description of UEFI Driver TestDrv
+#  
+#  TODO: Detailed Description of UEFI Driver TestDrv
+#
+#  TODO: Copyright for UEFI Driver TestDrv
+#  
+#  TODO: License for UEFI Driver TestDrv
+#  
+##
+
+[Defines]
+  INF_VERSION               = 0x00010005
+  BASE_NAME                 = TestDrv
+  FILE_GUID                 = 7f2f3040-caf5-11ec-96cc-2c6dc1ff987f
+  MODULE_TYPE               = UEFI_DRIVER
+  VERSION_STRING            = 0
+  ENTRY_POINT               = UefiMain
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[Sources]
+  TestDrv.h
+  TestDrv.c
+
+[LibraryClasses]
+  UefiDriverEntryPoint
+  UefiBootServicesTableLib
+  MemoryAllocationLib
+  BaseMemoryLib
+  BaseLib
+  UefiLib
+  DevicePathLib
+  DebugLib
+
+[Protocols]
+  gEfiPciIoProtocolGuid
+  gEfiComponentName2ProtocolGuid
+  gEfiComponentNameProtocolGuid
+
+[Guids]
+  gEfiFileInfoGuid

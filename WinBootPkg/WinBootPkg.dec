@@ -1,0 +1,25 @@
+## @file
+#  TODO: Brief Description of Package WinBootPkg
+#  
+#  TODO: Detailed Description of Package WinBootPkg
+#
+#  TODO: Copyright for Pacvkage WinBootPkg
+#  
+#  TODO: License for Package WinBootPkg
+#  
+##
+
+[Defines]
+  DEC_SPECIFICATION = 0x00010005
+  PACKAGE_NAME      = WinBootPkg
+  PACKAGE_GUID      = 67d4564f-caf5-11ec-bced-2c6dc1ff987f
+  PACKAGE_VERSION   = 0
+
+[Includes]
+  Include
+
+[LibraryClasses]
+
+[Protocols]
+
+[Guids]
