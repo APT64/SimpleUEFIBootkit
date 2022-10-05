@@ -42,12 +42,11 @@
 
 [Components]
   WinBootPkg/SmmMap/SmmMap.inf
-  WinBootPkg/SmmMapLoad/SmmMapLoad.inf
 
 [Components.IA32]
 
 [Components.X64]
-  WinBootPkg/TestDrv/TestDrv.inf
+
 [Components.IPF]
 
 [Components.EBC]
