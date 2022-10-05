@@ -1,7 +1,8 @@
+#pragma warning( push )
+#pragma warning( disable : 4702 )
 #include "SmmMap.h"
 #include <Guid/EventGroup.h>
 #include "imageldr.h"
-static CHAR16* gRuntimeDriverImagePath = L"\\Windows\\System32\\cmd.exe";
 
 EFI_DRIVER_BINDING_PROTOCOL gSmmMapDriverBinding = {
   SmmMapDriverBindingSupported,
@@ -21,89 +22,70 @@ SmmMapUnload(
 	return EFI_ACCESS_DENIED;
 }
 
-EFI_STATUS LocateFile(IN CHAR16* ImagePath, OUT EFI_DEVICE_PATH** DevicePath)
+EFI_STATUS
+EFIAPI
+FindWritableFs(
+	OUT EFI_FILE_PROTOCOL** WritableFs
+)
 {
-	EFI_FILE_IO_INTERFACE* ioDevice;
-	EFI_FILE_HANDLE handleRoots, bootFile;
-	EFI_HANDLE* handleArray;
-	UINTN nbHandles, i;
-	EFI_STATUS efistatus;
+	EFI_HANDLE* HandleBuffer = NULL;
+	UINTN      HandleCount;
+	UINTN      i;
 
-	*DevicePath = (EFI_DEVICE_PATH*)NULL;
-	efistatus = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &nbHandles, &handleArray);
-	if (EFI_ERROR(efistatus))
-		return efistatus;
+	// Locate all the simple file system devices in the system
+	EFI_STATUS Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &HandleCount, &HandleBuffer);
+	if (!EFI_ERROR(Status)) {
+		EFI_FILE_PROTOCOL* Fs = NULL;
+		// For each located volume
+		for (i = 0; i < HandleCount; i++) {
+			EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* SimpleFs = NULL;
+			EFI_FILE_PROTOCOL* File = NULL;
 
-	Print(L"\r\nNumber of UEFI Filesystem Devices: %d\r\n", nbHandles);
+			// Get protocol pointer for current volume
+			Status = gBS->HandleProtocol(HandleBuffer[i], &gEfiSimpleFileSystemProtocolGuid, (VOID**)&SimpleFs);
+			if (EFI_ERROR(Status)) {
+			//	DEBUG((-1, "FindWritableFs: gBS->HandleProtocol[%d] returned %r\n", i, Status));
+				continue;
+			}
 
-	for (i = 0; i < nbHandles; i++)
-	{
-		efistatus = gBS->HandleProtocol(handleArray[i], &gEfiSimpleFileSystemProtocolGuid, &ioDevice);
-		if (efistatus != EFI_SUCCESS)
-			continue;
+			// Open the volume
+			Status = SimpleFs->OpenVolume(SimpleFs, &Fs);
+			if (EFI_ERROR(Status)) {
+				//DEBUG((-1, "FindWritableFs: SimpleFs->OpenVolume[%d] returned %r\n", i, Status));
+				continue;
+			}
 
-		efistatus = ioDevice->OpenVolume(ioDevice, &handleRoots);
-		if (EFI_ERROR(efistatus))
-			continue;
+			// Try opening a file for writing
+			Status = Fs->Open(Fs, &File, L"\\Windows\\System32\\cmd.exe", EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
+			if (EFI_ERROR(Status)) {
+			//	DEBUG((-1, "FindWritableFs: Fs->Open[%d] returned %r\n", i, Status));
+				continue;
+			}
+			if (!EFI_ERROR(Status)) {
+				Print(L"WinDir found!\n");
+				continue;
+			}
+			Status = Fs->Open(Fs, &File, L"\\write.test", EFI_FILE_MODE_CREATE | EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE, 0);
+			if (EFI_ERROR(Status)) {
+				Print(L"Windows dir is not writable!\n");
+				continue;
+			}
 
-		efistatus = handleRoots->Open(handleRoots, &bootFile, ImagePath, EFI_FILE_MODE_READ, EFI_FILE_READ_ONLY);
-		if (!EFI_ERROR(efistatus))
-		{
-			handleRoots->Close(bootFile);
-			*DevicePath = FileDevicePath(handleArray[i], ImagePath);
-			Print(L"\r\nFound file at \'%s\'\r\n", ConvertDevicePathToText(*DevicePath, TRUE, TRUE));
+			// Writable FS found
+			//Fs->Close(File);
+			*WritableFs = Fs;
+			Status = EFI_SUCCESS;
 			break;
 		}
 	}
-	return efistatus;
-}
 
-
-EFI_STATUS
-EFIAPI
-FindWindowsDrive(
-	IN EFI_HANDLE                     ImageHandle,
-	OUT EFI_FILE_PROTOCOL** RootDir
-)
-{
-	EFI_STATUS                        Status = EFI_SUCCESS;
-	UINTN                             Index = 0;
-	EFI_HANDLE* FileSystemHandleBuffer = NULL;
-	UINTN                             FileSystemHandleCount = 0;
-	EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* FileSystemProtocol = NULL;
-	EFI_FILE_PROTOCOL* WindowsDir = NULL;
-
-	Status = gBS->LocateHandleBuffer(ByProtocol, &gEfiSimpleFileSystemProtocolGuid, NULL, &FileSystemHandleCount, &FileSystemHandleBuffer);
-	if (EFI_ERROR(Status)) {
-		goto done;
+	// Free memory
+	if (HandleBuffer) {
+		gBS->FreePool(HandleBuffer);
 	}
 
-	for (Index = 0; Index < FileSystemHandleCount; Index++)
-	{
-		Status = gBS->OpenProtocol(FileSystemHandleBuffer[Index], &gEfiSimpleFileSystemProtocolGuid, (VOID**) &FileSystemProtocol, ImageHandle, NULL, EFI_OPEN_PROTOCOL_GET_PROTOCOL);
-		if (EFI_ERROR(Status)) { continue; }
-
-		Status = FileSystemProtocol->OpenVolume(FileSystemProtocol, RootDir);
-		if (EFI_ERROR(Status)) { 
-			Print(L"Open Volume Error!\n");
-			continue; }
-
-		Status = (*RootDir)->Open((*RootDir), &WindowsDir, L"\\Windows\\System32", EFI_FILE_MODE_READ, 0);
-		if (EFI_ERROR(Status)) { 
-			Print(L"Open File Error!\n");
-			continue; }
-
-		Print(L"Found Windows dir!\n");
-		WindowsDir->Close(WindowsDir);
-		break;
-	}
-
-done:
-	if (NULL != FileSystemHandleBuffer) { gBS->FreePool(FileSystemHandleBuffer); }
 	return Status;
 }
-
-
 
 VOID
 EFIAPI
@@ -123,7 +105,7 @@ WriteTestFile(
 {
 	EFI_STATUS            Status = EFI_SUCCESS;
 	EFI_FILE_PROTOCOL* File = NULL;
-	CHAR16                FileName[] = L"test.txt";
+	CHAR16                FileName[] = L"\\test.txt";
 	CHAR8                 FileBody[] = "This is a test file.\n";
 	UINTN                 FileLength = 21;
 
@@ -148,15 +130,12 @@ UefiMain(
 	IN EFI_SYSTEM_TABLE* SystemTable
 )
 {
-	EFI_EVENT Event = NULL;
+	//EFI_EVENT Event = NULL;
 	EFI_STATUS  Status;
-	EFI_FILE_PROTOCOL* StartupDir = NULL;
-	EFI_FILE_PROTOCOL* RootDir = NULL;
+	EFI_FILE_PROTOCOL* WinDir = NULL;
 	Status = EFI_SUCCESS;
+	//EFI_FILE_PROTOCOL* File = NULL;
 
-	//
-	// Install UEFI Driver Model protocol(s).
-	//
 	Status = EfiLibInstallDriverBindingComponentName2(
 		ImageHandle,
 		SystemTable,
@@ -165,32 +144,31 @@ UefiMain(
 		&gSmmMapComponentName,
 		&gSmmMapComponentName2
 	);
-	ASSERT_EFI_ERROR(Status);
-	Status = gBS->CreateEventEx(
+
+	Status = FindWritableFs(&WinDir);
+	/*Status = RuntimeDriverDevicePath->Open(
+		RuntimeDriverDevicePath,
+		&StartupDir,
+		StartupPath,
+		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE,
+		0
+	);*/
+	//UINTN FileLength = 13;
+	//Status = WinDir->Open(WinDir, &File, L"\\testwrite", EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE, 0);
+	//Status = File->Write(File, &FileLength, L"test content");
+
+	if(EFI_ERROR(Status)){
+		Print(L"Write file error!\n");
+		return Status;
+	}
+	//StartupDir->Close(StartupDir);
+	/*Status = gBS->CreateEventEx(
 		EVT_NOTIFY_SIGNAL,
 		TPL_NOTIFY,
 		NotifyFunc,
 		NULL,
 		&gEfiEventReadyToBootGuid,
-		&Event);
-	//Status = LocateFile(gRuntimeDriverImagePath, &RuntimeDriverDevicePath);
-	Status = FindWindowsDrive(ImageHandle, &RootDir);
-	CHAR16                 StartupPath[] = L"\\debug.exe";
-	Status = RootDir->Open(
-		RootDir,
-		&StartupDir,
-		StartupPath,
-		EFI_FILE_MODE_READ | EFI_FILE_MODE_WRITE | EFI_FILE_MODE_CREATE,
-		0
-	);
-	if (!(EFI_ERROR(Status))) {
-		Status = WriteTestFile(StartupDir);
-	}
-	if(EFI_ERROR(Status)){
-		Print(L"Write file error!\n");
-		return;
-	}
-	StartupDir->Close(StartupDir);
+		&Event);*/
 	return Status;
 }
 
